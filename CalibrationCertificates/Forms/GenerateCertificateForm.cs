@@ -3,199 +3,127 @@ using System.Collections.Generic;
 using System.IO;
 using System.Windows.Forms;
 using CalibrationCertificates.Database;
-using CalibrationCertificates.Models;
-using CalibrationCertificates.Utils;
+using DocumentFormat.OpenXml.Packaging;
+using DocumentFormat.OpenXml.Wordprocessing;
 
 namespace CalibrationCertificates.Forms
 {
-    public class GenerateCertificateForm : Form
+    public partial class GenerateCertificateForm : Form
     {
-        private ComboBox deviceSelector, standardSelector, calibratorSelector, chiefMetrologistSelector;
-        private TextBox tempBox, humidityBox, pressureBox, voltageBox, previewBox;
-        private Button saveButton, backButton;
-
-        private List<Device> devices;
-        private List<Standard> standards;
-        private List<User> calibrators;
-        private List<User> chiefs;
-
         public GenerateCertificateForm()
         {
-            this.Text = "Создать сертификат";
-            this.Width = 900;
-            this.Height = 700;
-
-            InitializeControls();
-            LoadData();
+            InitializeComponent();
         }
 
-        private void InitializeControls()
+        private void GenerateCertificateForm_Load(object sender, EventArgs e)
         {
-            int top = 20;
+            // Пример: загрузка данных из базы
+            cmbDevice.DataSource = DatabaseManager.GetDevices();
+            cmbDevice.DisplayMember = "DeviceName";
+            cmbDevice.ValueMember = "Id";
 
-            Controls.Add(new Label { Text = "Прибор:", Left = 20, Top = top });
-            deviceSelector = new ComboBox { Left = 150, Top = top, Width = 300 };
-            deviceSelector.SelectedIndexChanged += UpdatePreview;
-            Controls.Add(deviceSelector);
-            top += 40;
+            cmbStandard.DataSource = DatabaseManager.GetStandards();
+            cmbStandard.DisplayMember = "StandardName";
+            cmbStandard.ValueMember = "Id";
 
-            Controls.Add(new Label { Text = "Эталон:", Left = 20, Top = top });
-            standardSelector = new ComboBox { Left = 150, Top = top, Width = 300 };
-            standardSelector.SelectedIndexChanged += UpdatePreview;
-            Controls.Add(standardSelector);
-            top += 40;
+            cmbCalibrator.DataSource = DatabaseManager.GetUsersByRole("calibrator");
+            cmbCalibrator.DisplayMember = "Username";
+            cmbCalibrator.ValueMember = "Id";
 
-            Controls.Add(new Label { Text = "Калибровщик:", Left = 20, Top = top });
-            calibratorSelector = new ComboBox { Left = 150, Top = top, Width = 300 };
-            calibratorSelector.SelectedIndexChanged += UpdatePreview;
-            Controls.Add(calibratorSelector);
-            top += 40;
+            cmbChief.DataSource = DatabaseManager.GetUsersByRole("chief");
+            cmbChief.DisplayMember = "Username";
+            cmbChief.ValueMember = "Id";
 
-            Controls.Add(new Label { Text = "Главный метролог:", Left = 20, Top = top });
-            chiefMetrologistSelector = new ComboBox { Left = 150, Top = top, Width = 300 };
-            chiefMetrologistSelector.SelectedIndexChanged += UpdatePreview;
-            Controls.Add(chiefMetrologistSelector);
-            top += 40;
-
-            Controls.Add(new Label { Text = "Температура (°C):", Left = 20, Top = top });
-            tempBox = new TextBox { Left = 150, Top = top, Width = 100 };
-            tempBox.TextChanged += UpdatePreview;
-            Controls.Add(tempBox);
-            top += 40;
-
-            Controls.Add(new Label { Text = "Влажность (%):", Left = 20, Top = top });
-            humidityBox = new TextBox { Left = 150, Top = top, Width = 100 };
-            humidityBox.TextChanged += UpdatePreview;
-            Controls.Add(humidityBox);
-            top += 40;
-
-            Controls.Add(new Label { Text = "Давление (кПа):", Left = 20, Top = top });
-            pressureBox = new TextBox { Left = 150, Top = top, Width = 100 };
-            pressureBox.TextChanged += UpdatePreview;
-            Controls.Add(pressureBox);
-            top += 40;
-
-            Controls.Add(new Label { Text = "Напряжение (В):", Left = 20, Top = top });
-            voltageBox = new TextBox { Left = 150, Top = top, Width = 100 };
-            voltageBox.TextChanged += UpdatePreview;
-            Controls.Add(voltageBox);
-            top += 40;
-
-            previewBox = new TextBox
-            {
-                Left = 500,
-                Top = 20,
-                Width = 350,
-                Height = 500,
-                Multiline = true,
-                ReadOnly = true,
-                ScrollBars = ScrollBars.Vertical
-            };
-            Controls.Add(previewBox);
-
-            saveButton = new Button { Text = "Сохранить сертификат", Left = 20, Top = top + 40, Width = 200 };
-            backButton = new Button { Text = "Назад", Left = 240, Top = top + 40, Width = 150 };
-
-            saveButton.Click += SaveButton_Click;
-            backButton.Click += (s, e) => { this.Close(); };
-
-            Controls.Add(saveButton);
-            Controls.Add(backButton);
+            HookPreviewEvents();
         }
 
-        private void LoadData()
+        private void HookPreviewEvents()
         {
-            devices = DatabaseManager.GetDevices();
-            standards = DatabaseManager.GetStandards();
-            calibrators = DatabaseManager.GetUsersByRole("калибровщик");
-            chiefs = DatabaseManager.GetUsersByRole("главный метролог");
+            cmbDevice.SelectedIndexChanged += (s, e) => UpdatePreviewHtml();
+            cmbStandard.SelectedIndexChanged += (s, e) => UpdatePreviewHtml();
+            cmbCalibrator.SelectedIndexChanged += (s, e) => UpdatePreviewHtml();
+            cmbChief.SelectedIndexChanged += (s, e) => UpdatePreviewHtml();
 
-            foreach (var d in devices)
-                deviceSelector.Items.Add($"{d.DeviceName} (Зав. № {d.FactoryNumber})");
-
-            foreach (var s in standards)
-                standardSelector.Items.Add($"{s.StandardName} (Зав. № {s.FactoryNumber})");
-
-            foreach (var u in calibrators)
-                calibratorSelector.Items.Add(u.Username);
-
-            foreach (var c in chiefs)
-                chiefMetrologistSelector.Items.Add(c.Username);
+            txtTemp.TextChanged += (s, e) => UpdatePreviewHtml();
+            txtHumidity.TextChanged += (s, e) => UpdatePreviewHtml();
+            txtPressure.TextChanged += (s, e) => UpdatePreviewHtml();
+            txtVoltage.TextChanged += (s, e) => UpdatePreviewHtml();
         }
 
-        private void UpdatePreview(object sender, EventArgs e)
+        private void UpdatePreviewHtml()
         {
-            if (deviceSelector.SelectedIndex == -1 || standardSelector.SelectedIndex == -1 ||
-                calibratorSelector.SelectedIndex == -1 || chiefMetrologistSelector.SelectedIndex == -1)
-                return;
+            string html = $@"
+            <html><head><meta charset='utf-8'>
+            <style>body{{font-family:Arial;padding:10px;}}</style></head><body>
+            <h2>Сертификат калибровки</h2>
+            <p><b>Прибор:</b> {cmbDevice.Text}</p>
+            <p><b>Эталон:</b> {cmbStandard.Text}</p>
+            <p><b>Калибровщик:</b> {cmbCalibrator.Text}</p>
+            <p><b>Главный метролог:</b> {cmbChief.Text}</p>
+            <p><b>Условия:</b> t={txtTemp.Text} °C, φ={txtHumidity.Text} %, ρ={txtPressure.Text} кПа, U={txtVoltage.Text} В</p>
+            <p><b>Дата:</b> {DateTime.Now:dd.MM.yyyy}</p>
+            </body></html>";
 
-            previewBox.Text = $@"
-АО НПК «Северная заря»
-
-СЕРТИФИКАТ О КАЛИБРОВКЕ
-
-Прибор: {devices[deviceSelector.SelectedIndex].DeviceName}
-Эталон: {standards[standardSelector.SelectedIndex].StandardName}
-Калибровщик: {calibrators[calibratorSelector.SelectedIndex].Username}
-Главный метролог: {chiefs[chiefMetrologistSelector.SelectedIndex].Username}
-
-Факторы окружающей среды:
-Температура: {tempBox.Text} °C
-Влажность: {humidityBox.Text} %
-Давление: {pressureBox.Text} кПа
-Напряжение: {voltageBox.Text} В
-
-Дата калибровки: {DateTime.Now:dd.MM.yyyy}
-";
+            webPreview.DocumentText = html;
         }
 
-        private void SaveButton_Click(object sender, EventArgs e)
+        private void btnGenerate_Click(object sender, EventArgs e)
         {
             try
             {
-                var cert = new Certificate
+                string templatePath = Path.Combine(Application.StartupPath, "Шаблон.docx");
+
+                if (!File.Exists(templatePath))
                 {
-                    DeviceId = devices[deviceSelector.SelectedIndex].Id,
-                    StandardId = standards[standardSelector.SelectedIndex].Id,
-                    CalibratorId = calibrators[calibratorSelector.SelectedIndex].Id,
-                    ChiefMetrologistId = chiefs[chiefMetrologistSelector.SelectedIndex].Id,
-                    Temperature = double.Parse(tempBox.Text),
-                    Humidity = double.Parse(humidityBox.Text),
-                    Pressure = double.Parse(pressureBox.Text),
-                    Voltage = double.Parse(voltageBox.Text),
-                    CalibrationDate = DateTime.Now
+                    MessageBox.Show("Файл шаблона не найден.", "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                string desktopPath = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+                string outputPath = Path.Combine(desktopPath, $"Сертификат_{DateTime.Now:yyyyMMdd_HHmmss}.docx");
+
+                File.Copy(templatePath, outputPath, true);
+
+                var replacements = new Dictionary<string, string>
+                {
+                    ["{{DEVICE}}"] = cmbDevice.Text,
+                    ["{{STANDARD}}"] = cmbStandard.Text,
+                    ["{{CALIBRATOR}}"] = cmbCalibrator.Text,
+                    ["{{CHIEF}}"] = cmbChief.Text,
+                    ["{{TEMP}}"] = txtTemp.Text,
+                    ["{{HUMIDITY}}"] = txtHumidity.Text,
+                    ["{{PRESSURE}}"] = txtPressure.Text,
+                    ["{{VOLTAGE}}"] = txtVoltage.Text,
+                    ["{{DATE}}"] = DateTime.Now.ToString("dd.MM.yyyy")
                 };
 
-                // Сохраняем в базу данных
-                DatabaseManager.InsertCertificate(cert);
+                ReplaceTextInDocument(outputPath, replacements);
 
-                // Готовим подстановку для шаблона
-                var replacements = new Dictionary<string, string>
-{
-    { "{Device}", devices[deviceSelector.SelectedIndex].DeviceName },
-    { "{Standard}", standards[standardSelector.SelectedIndex].StandardName },
-    { "{Calibrator}", calibrators[calibratorSelector.SelectedIndex].Username },
-    { "{ChiefMetrologist}", chiefs[chiefMetrologistSelector.SelectedIndex].Username },
-    { "{Temperature}", tempBox.Text },
-    { "{Humidity}", humidityBox.Text },
-    { "{Pressure}", pressureBox.Text },
-    { "{Voltage}", voltageBox.Text },
-    { "{CalibrationDate}", DateTime.Now.ToString("dd.MM.yyyy") }
-};
-
-                string savePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, $"Certificate_{DateTime.Now:yyyyMMdd_HHmmss}.docx");
-                CertificateDocxGenerator.GenerateCertificateDocx(replacements, savePath);
-
-
-                CertificateDocxGenerator.GenerateCertificateDocx(replacements, savePath);
-
-                MessageBox.Show($"Сертификат успешно сохранён в файл:\n{savePath}");
-                this.Close();
+                MessageBox.Show("Сертификат успешно сохранён на рабочем столе.", "Готово", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Ошибка при сохранении: {ex.Message}");
+                MessageBox.Show("Ошибка при сохранении сертификата:\n" + ex.Message);
             }
+        }
+
+        private void ReplaceTextInDocument(string filePath, Dictionary<string, string> replacements)
+        {
+            using var doc = WordprocessingDocument.Open(filePath, true);
+            var texts = doc.MainDocumentPart.Document.Body.Descendants<Text>();
+
+            foreach (var text in texts)
+            {
+                foreach (var pair in replacements)
+                {
+                    if (text.Text.Contains(pair.Key))
+                    {
+                        text.Text = text.Text.Replace(pair.Key, pair.Value);
+                    }
+                }
+            }
+
+            doc.MainDocumentPart.Document.Save();
         }
     }
 }

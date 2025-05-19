@@ -5,21 +5,19 @@ namespace CalibrationCertificates.Forms
 {
     public partial class MenuForm : Form
     {
-        Button buttonUpdateData;
-        Button buttonGenerateCertificate;
-
         public MenuForm()
         {
-            this.Text = "Menu";
+            InitializeComponent(); // вызываем, но не определяем!
+        }
 
-            buttonUpdateData = new Button { Text = "Обновить данные", Top = 30, Left = 30, Width = 150 };
-            buttonGenerateCertificate = new Button { Text = "Сформировать сертификат", Top = 80, Left = 30, Width = 200 };
+        private void btnUpdateData_Click(object sender, EventArgs e)
+        {
+            new UpdateDataForm().Show();
+        }
 
-            buttonUpdateData.Click += (s, e) => { new UpdateDataForm().Show(); };
-            buttonGenerateCertificate.Click += (s, e) => { new GenerateCertificateForm().Show(); };
-
-            Controls.Add(buttonUpdateData);
-            Controls.Add(buttonGenerateCertificate);
+        private void btnCertificate_Click(object sender, EventArgs e)
+        {
+            new GenerateCertificateForm().Show(); // или CertificateForm, если переименовано
         }
     }
 }
